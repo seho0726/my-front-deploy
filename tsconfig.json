@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* 번들러 설정 */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* 🟢 핵심: 자바스크립트 허용 설정 */
+    "allowJs": true,         /* JS 파일 import 허용 */
+    "checkJs": false,        /* JS 파일 오류 검사 끄기 (편하게 작업하기 위함) */
+
+    /* 🔴 엄격함 끄기 (이사 중 스트레스 방지) */
+    "strict": false,         /* 엄격 모드 해제 */
+    "noImplicitAny": false,  /* any 타입 허용 */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

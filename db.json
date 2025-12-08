@@ -1,0 +1,25 @@
+{
+  "comments": [
+    {
+      "id": "ec6e",
+      "bookId": "67",
+      "userId": "KT",
+      "description": "미쳤다",
+      "createdAt": "2025-12-05T05:57:20.186Z"
+    },
+    {
+      "id": "5979",
+      "bookId": "67",
+      "userId": "KT",
+      "description": "미쳤다z",
+      "createdAt": "2025-12-05T05:57:23.322Z"
+    },
+    {
+      "id": "c567",
+      "bookId": "67",
+      "userId": "KT",
+      "description": "rr",
+      "createdAt": "2025-12-05T05:57:50.322Z"
+    }
+  ]
+}
