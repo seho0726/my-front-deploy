@@ -1,6 +1,7 @@
 import { Book } from '../types'; // types.ts에서 타입 가져오기
 import { Calendar, Check, Star, Package } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback'; // 이미지 컴포넌트 경로 확인 필요
+import React from 'react';
 
 interface BookCardProps {
     book: Book;
@@ -8,6 +9,7 @@ interface BookCardProps {
     onSelect: (id: string) => void;
     onBookClick: (book: Book) => void;
     isSelectionMode: boolean;
+    key?: React.Key;
 }
 
 export function BookCard({ book, isSelected, onSelect, onBookClick, isSelectionMode }: BookCardProps) {

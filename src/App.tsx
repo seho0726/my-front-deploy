@@ -104,7 +104,7 @@ export default function App() {
     const handleLogin = (user: User) => setCurrentUser(user);
 
     const handleLogout = async () => {
-        // ✅ [추가] 서버에 로그아웃 요청 보내기
+        // 서버에 로그아웃 요청 보내기
         try {
             const token = localStorage.getItem('accessToken');
             if (token) {
