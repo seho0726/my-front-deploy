@@ -17,7 +17,7 @@ export function SignUpScreen() {
         setSuccess("");
 
         try {
-            const res = await fetch("http://localhost:8080/api/register", {
+            const res = await fetch("http://localhost:8080/user/signup", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

@@ -1,4 +1,4 @@
-import { Book, Loan } from '../App.tsx';
+import { Book } from '../types.tsx';
 import { X, User, Calendar, AlertCircle, Clock } from 'lucide-react';
 
 interface LoanDetailsDialogProps {

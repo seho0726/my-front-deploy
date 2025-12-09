@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Book } from '../types'; // types.ts 확인
+import { apiFetch } from '../api/client'; // ⭐ apiFetch 임포트
 import { X, Sparkles } from 'lucide-react';
 import { AIImageGenerator } from './AIImageGenerator';
 
@@ -18,7 +19,7 @@ export function AddBookDialog({ book, onClose, onSave }: AddBookDialogProps) {
         description: '',
         coverImage: '',
         publishedYear: new Date().getFullYear(),
-        isbn: '',
+        price: 0,
         stock: 50 // 기본 재고 (구매 시스템 필수)
     });
 
@@ -34,7 +35,7 @@ export function AddBookDialog({ book, onClose, onSave }: AddBookDialogProps) {
                 description: book.description,
                 coverImage: book.coverImage,
                 publishedYear: book.publishedYear,
-                isbn: book.isbn || '',
+                price: book.price || 0,
                 stock: book.stock
             });
         }
@@ -44,40 +45,33 @@ export function AddBookDialog({ book, onClose, onSave }: AddBookDialogProps) {
         setFormData(prev => ({ ...prev, [key]: value }));
     };
 
-    // ⭐ [API 연동] 저장 버튼 핸들러
+    // ⭐ [API 연동] 저장 버튼 핸들러 (apiFetch 사용)
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         // 1. URL 및 Method 결정
         const method = book ? "PUT" : "POST";
-        const url = book
-            ? `http://localhost:8080/api/book/${book.id}`  // 수정
-            : `http://localhost:8080/api/book`;            // 등록
+        const endpoint = book
+            ? `/book/${book.id}`  // 수정 (PUT /book/{id})
+            : `/book`;            // 등록 (POST /book)
 
         try {
-            // 2. API 호출
-            const response = await fetch(url, {
+            // 2. API 호출 (apiFetch 사용)
+            // apiFetch가 자동으로 토큰을 붙여주고, 에러 처리도 합니다.
+            const result: Book = await apiFetch(endpoint, {
                 method,
-                headers: { "Content-Type": "application/json" },
-                // book 객체가 있다면 id 등을 포함해야 할 수도 있음 (명세서 확인 필요)
-                // 여기서는 formData 내용을 보냄
                 body: JSON.stringify(formData)
             });
 
-            if (!response.ok) {
-                throw new Error("저장에 실패했습니다.");
-            }
-
             // 3. 성공 시 처리
-            const result = await response.json(); // 서버가 저장된 책 정보를 돌려준다고 가정
-            onSave(result); // App.tsx의 handleAddBook/handleEditBook 호출 -> 목록 새로고침
+            onSave(result); // App.tsx의 목록 갱신 함수 호출
 
             alert(book ? "도서가 수정되었습니다." : "도서가 등록되었습니다.");
             onClose();
 
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            alert("서버 통신 중 오류가 발생했습니다.");
+            alert(`저장 중 오류가 발생했습니다: ${err.message}`);
         }
     };
 
@@ -120,7 +114,7 @@ export function AddBookDialog({ book, onClose, onSave }: AddBookDialogProps) {
                         <InputField label="재고 수량" type="number" value={formData.stock} onChange={(v:any) => handleChange("stock", Number(v))} />
                     </div>
 
-                    <InputField label="ISBN" value={formData.isbn} onChange={(v:any) => handleChange("isbn", v)} placeholder="선택 입력" />
+                    <InputField label="가격 *" type="number" value={formData.price} onChange={(v:any) => handleChange("price", Number(v))} required placeholder="선택 입력" />
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">설명</label>
@@ -177,6 +171,7 @@ export function AddBookDialog({ book, onClose, onSave }: AddBookDialogProps) {
             {/* AI Generator Popup */}
             {showAIGenerator && (
                 <AIImageGenerator
+                    bookId={book?.id} // bookId 전달 (수정 시 즉시 저장용)
                     bookTitle={formData.title}
                     bookGenre={formData.genre}
                     onClose={() => setShowAIGenerator(false)}

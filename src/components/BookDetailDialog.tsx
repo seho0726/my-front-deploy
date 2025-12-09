@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { Book, User, Review } from '../types'; // types.ts에서 타입 가져오기
-import { X, BookOpen, User as UserIcon, Calendar, Hash, Tag, Star, MessageSquare, Send, Edit2, Trash2, Check, XCircle, Package, Plus, Minus, ShoppingBag, CreditCard } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Book, User, Review } from '../types';
+import { apiFetch } from '../api/client'; // ⭐ apiFetch 임포트
+import { X, BookOpen, User as UserIcon, Calendar, Hash, Tag, Star, MessageSquare, Send, Edit2, Trash2, Check, XCircle, Package, Plus, Minus, ShoppingBag, CreditCard, RefreshCw } from 'lucide-react';
 
 interface BookDetailDialogProps {
-    book: Book;
+    book: Book; // 목록에서 넘겨준 책 정보
     currentUser: User;
     onClose: () => void;
     onUpdateBook: (updatedBook: Book) => void;
@@ -11,7 +12,7 @@ interface BookDetailDialogProps {
     onPurchase: (bookId: string, quantity: number, totalPrice: number) => void;
 }
 
-// API 응답 타입 정의
+// API 응답 타입
 interface CommentResponse {
     commentId: number;
     userId: string;
@@ -21,7 +22,7 @@ interface CommentResponse {
 }
 
 export function BookDetailDialog({
-                                     book,
+                                     book: initialBook,
                                      currentUser,
                                      onClose,
                                      onUpdateBook,
@@ -30,14 +31,47 @@ export function BookDetailDialog({
                                  }: BookDetailDialogProps) {
 
     // State 관리
+    const [book, setBook] = useState<Book>(initialBook);
+    const [isLoading, setIsLoading] = useState(false);
+
     const [reviewText, setReviewText] = useState('');
     const [hoverRating, setHoverRating] = useState(0);
     const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
     const [editingReviewText, setEditingReviewText] = useState('');
 
-    // ⭐ [추가] 구매 수량 State 및 가격 설정
+    // 구매 수량 State 및 가격 설정
     const [purchaseQuantity, setPurchaseQuantity] = useState(1);
     const BOOK_PRICE = book.price || 15000;
+
+    // 도서 상세 정보 조회 API (GET /book/{id})
+    useEffect(() => {
+        const fetchBookDetail = async () => {
+            setIsLoading(true);
+            try {
+                // apiFetch 사용
+                const data: any = await apiFetch(`/book/${initialBook.id}`);
+
+                const parsedBook = {
+                    ...data,
+                    createdAt: new Date(data.createdAt),
+                    ratings: data.ratings || [],
+                    reviews: data.reviews?.map((r: any) => ({
+                        ...r,
+                        timestamp: new Date(r.timestamp)
+                    })) || [],
+                    stock: data.stock || 0
+                };
+
+                setBook(parsedBook);
+            } catch (error) {
+                console.error("상세 정보 로딩 실패:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchBookDetail();
+    }, [initialBook.id]);
 
     // 날짜 포맷 함수
     const formatDate = (date: Date | string) => {
@@ -57,7 +91,7 @@ export function BookDetailDialog({
     const userRating = book.ratings?.find(r => r.userId === currentUser.id);
     const currentRating = userRating?.rating || 0;
 
-    // 평점 등록 핸들러 (API 미연동 - 추후 연동 필요)
+    // 평점 등록 핸들러
     const handleRating = (rating: number) => {
         const existingRatingIndex = book.ratings.findIndex(r => r.userId === currentUser.id);
         let newRatings = [...book.ratings];
@@ -67,10 +101,12 @@ export function BookDetailDialog({
         } else {
             newRatings.push({ userId: currentUser.id, rating, timestamp: new Date() });
         }
-        onUpdateBook({ ...book, ratings: newRatings });
+        const updatedBook = { ...book, ratings: newRatings };
+        setBook(updatedBook);
+        onUpdateBook(updatedBook);
     };
 
-    // ⭐ 리뷰 등록 핸들러 (API 연동 완료)
+    // 리뷰 등록 핸들러 (API 연동)
     const handleSubmitReview = async () => {
         if (!reviewText.trim()) {
             alert("내용이 없는 댓글은 작성 불가합니다.");
@@ -78,28 +114,11 @@ export function BookDetailDialog({
         }
 
         try {
-            const token = localStorage.getItem('accessToken');
-            if (!token) {
-                alert("로그인이 필요합니다.");
-                return;
-            }
-
-            const response = await fetch(`http://localhost:8080/api/books/${book.id}/comments`, {
+            // apiFetch 사용 (POST /comment/{bookId})
+            const responseData: any = await apiFetch(`/comment/${book.id}`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
                 body: JSON.stringify({ description: reviewText.trim() })
             });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                const msg = errorData["Error Message"] || "댓글 등록 실패";
-                throw new Error(msg);
-            }
-
-            const responseData = await response.json() as CommentResponse;
 
             const newReview: Review = {
                 id: responseData.commentId.toString(),
@@ -108,52 +127,39 @@ export function BookDetailDialog({
                 timestamp: new Date(responseData.createdAt)
             };
 
-            onUpdateBook({ ...book, reviews: [newReview, ...book.reviews] });
+            const updatedReviews = [newReview, ...book.reviews];
+            const updatedBook = { ...book, reviews: updatedReviews };
+
+            setBook(updatedBook);
+            onUpdateBook(updatedBook);
             setReviewText('');
             alert('한줄평이 성공적으로 등록되었습니다!');
 
         } catch (error: any) {
-            console.error(error);
-            alert(error.message || "오류가 발생했습니다.");
+            alert(error.message);
         }
     };
 
-    // 리뷰 수정 모드 진입
-    const handleEditReview = (reviewId: string) => {
-        const review = book.reviews.find(r => r.id === reviewId);
-        if (review) {
-            setEditingReviewId(reviewId);
-            setEditingReviewText(review.comment);
-        }
-    };
-
-    // ⭐ 리뷰 수정 핸들러 (API 연동 완료)
+    // 리뷰 수정 핸들러
     const handleUpdateReview = async () => {
         if (!editingReviewText.trim()) return;
 
         try {
-            const token = localStorage.getItem('accessToken');
-            if (!token) return;
-
-            const response = await fetch(`http://localhost:8080/api/comments/${editingReviewId}`, {
+            // apiFetch 사용 (PATCH /comment/{commentId}) - 명세서상 수정은 없으나 보통 이렇게 구현
+            // 만약 명세서에 없다면 삭제 후 재등록 방식을 쓸 수도 있음
+            // 여기서는 임시로 comment/{id}로 PATCH 시도
+            await apiFetch(`/comment/${editingReviewId}`, {
                 method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
                 body: JSON.stringify({ description: editingReviewText.trim() })
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData["Error Message"] || "수정 실패");
-            }
-
-            // 성공 시 UI 업데이트
             const updatedReviews = book.reviews.map(r =>
                 r.id === editingReviewId ? { ...r, comment: editingReviewText.trim(), timestamp: new Date() } : r
             );
-            onUpdateBook({ ...book, reviews: updatedReviews });
+            const updatedBook = { ...book, reviews: updatedReviews };
+
+            setBook(updatedBook);
+            onUpdateBook(updatedBook);
             setEditingReviewId(null);
             setEditingReviewText('');
             alert("댓글이 수정되었습니다.");
@@ -163,41 +169,33 @@ export function BookDetailDialog({
         }
     };
 
-    // ⭐ 리뷰 삭제 핸들러 (API 연동 완료)
+    // 리뷰 삭제 핸들러
     const handleDeleteReview = async (reviewId: string) => {
         if (!confirm("정말로 이 댓글을 삭제하시겠습니까?")) return;
 
         try {
-            const token = localStorage.getItem('accessToken');
-            if (!token) return;
+            // apiFetch 사용 (DELETE /comment/{commentId})
+            await apiFetch(`/comment/${reviewId}`, { method: 'DELETE' });
 
-            const response = await fetch(`http://localhost:8080/api/comments/${reviewId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            // 204 No Content 처리
-            if (response.status === 204) {
-                const updatedReviews = book.reviews.filter(r => r.id !== reviewId);
-                onUpdateBook({ ...book, reviews: updatedReviews });
-                alert("댓글이 삭제되었습니다.");
-                return;
-            }
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData["Error Message"] || "삭제 실패");
-            }
+            const updatedReviews = book.reviews.filter(r => r.id !== reviewId);
+            const updatedBook = { ...book, reviews: updatedReviews };
+            setBook(updatedBook);
+            onUpdateBook(updatedBook);
+            alert("댓글이 삭제되었습니다.");
 
         } catch (error: any) {
             alert(error.message);
         }
     };
 
-    // ⭐ [추가] 구매 수량 조절 핸들러
+    const handleEditReview = (reviewId: string) => {
+        const review = book.reviews.find(r => r.id === reviewId);
+        if (review) {
+            setEditingReviewId(reviewId);
+            setEditingReviewText(review.comment);
+        }
+    };
+
     const handleIncreaseQty = () => {
         if (purchaseQuantity < book.stock) setPurchaseQuantity(prev => prev + 1);
         else alert(`재고가 부족합니다. (최대 ${book.stock}권)`);
@@ -207,14 +205,56 @@ export function BookDetailDialog({
         if (purchaseQuantity > 1) setPurchaseQuantity(prev => prev - 1);
     };
 
-    // [관리자용] 재고 관리 핸들러
-    const handleAdminIncreaseStock = () => {
-        onUpdateBook({ ...book, stock: book.stock + 1 });
+    // ⭐ [관리자용] 재고 증가 핸들러 (API 연동: PUT /book/{bookId}/stock)
+    const handleAdminIncreaseStock = async () => {
+        const newStock = book.stock + 1;
+
+        // UI 즉시 반영 (Optimistic Update)
+        const updatedBook = { ...book, stock: newStock };
+        setBook(updatedBook);
+        onUpdateBook(updatedBook);
+
+        try {
+            // API 호출: PUT /book/{bookId}/stock
+            // Body: { stock: 51 } 형태로 보낸다고 가정
+            await apiFetch(`/book/${book.id}/stock`, {
+                method: "PUT",
+                body: JSON.stringify({ stock: newStock })
+            });
+        } catch (error) {
+            console.error("재고 업데이트 실패:", error);
+            // 실패 시 롤백
+            const rollbackBook = { ...book, stock: book.stock };
+            setBook(rollbackBook);
+            onUpdateBook(rollbackBook);
+            alert("재고 업데이트에 실패했습니다.");
+        }
     };
 
-    const handleAdminDecreaseStock = () => {
+    // ⭐ [관리자용] 재고 감소 핸들러 (API 연동: PUT /book/{bookId}/stock)
+    const handleAdminDecreaseStock = async () => {
         if (book.stock <= 0) return;
-        onUpdateBook({ ...book, stock: book.stock - 1 });
+        const newStock = book.stock - 1;
+
+        // UI 즉시 반영
+        const updatedBook = { ...book, stock: newStock };
+        setBook(updatedBook);
+        onUpdateBook(updatedBook);
+
+        try {
+            // API 호출
+            await apiFetch(`/book/${book.id}/stock`, {
+                method: "PUT",
+                body: JSON.stringify({ stock: newStock })
+            });
+        } catch (error) {
+            console.error("재고 업데이트 실패:", error);
+            // 실패 시 롤백
+            const rollbackBook = { ...book, stock: book.stock };
+            setBook(rollbackBook);
+            onUpdateBook(rollbackBook);
+            alert("재고 업데이트에 실패했습니다.");
+        }
     };
 
     const averageRating = calculateAverageRating();
@@ -232,14 +272,18 @@ export function BookDetailDialog({
                         <div>
                             <h2 className="text-gray-900">도서 상세 정보</h2>
                             <p className="text-sm text-gray-500">
-                                {averageRating > 0 ? (
-                                    <span className="inline-flex items-center gap-1">
-                                        <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                        <span>{averageRating.toFixed(1)}</span>
-                                        <span className="text-gray-400">({book.ratings.length}명 평가)</span>
-                                    </span>
+                                {isLoading ? (
+                                    <span className="flex items-center gap-1 text-blue-500"><RefreshCw className="w-3 h-3 animate-spin"/> 최신 정보 불러오는 중...</span>
                                 ) : (
-                                    <span>아직 평가가 없습니다</span>
+                                    averageRating > 0 ? (
+                                        <span className="inline-flex items-center gap-1">
+                                            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                            <span>{averageRating.toFixed(1)}</span>
+                                            <span className="text-gray-400">({book.ratings.length}명 평가)</span>
+                                        </span>
+                                    ) : (
+                                        <span>아직 평가가 없습니다</span>
+                                    )
                                 )}
                             </p>
                         </div>
@@ -252,12 +296,10 @@ export function BookDetailDialog({
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6">
                     <div className="flex gap-6 mb-6">
-                        {/* Book Cover */}
                         <div className="flex-shrink-0">
                             <img src={book.coverImage} alt={book.title} className="w-48 h-72 object-cover rounded-lg shadow-lg" />
                         </div>
 
-                        {/* Book Information */}
                         <div className="flex-1 space-y-4">
                             <div>
                                 <div className="flex items-start justify-between mb-2">
@@ -340,7 +382,7 @@ export function BookDetailDialog({
                                 <Send className="w-4 h-4" /> 등록
                             </button>
                         </div>
-                        {/* 리뷰 목록 */}
+
                         <div className="space-y-3 max-h-60 overflow-y-auto">
                             {book.reviews.length === 0 ? (
                                 <div className="text-center py-8 text-gray-500">
@@ -380,7 +422,7 @@ export function BookDetailDialog({
                         </div>
                     </div>
 
-                    {/* ⭐ Purchase Section (구매 옵션) */}
+                    {/* Purchase Section */}
                     {currentUser.role !== 'admin' && (
                         <div className="border-t border-gray-200 pt-6 mt-6">
                             <h4 className="text-gray-900 mb-4 flex items-center gap-2 font-bold">
@@ -419,7 +461,7 @@ export function BookDetailDialog({
                         </div>
                     )}
 
-                    {/* Stock Management Section - Admin Only */}
+                    {/* ⭐ Stock Management Section - Admin Only (API 연동 완료) */}
                     {currentUser.role === 'admin' && (
                         <div className="border-t border-gray-200 pt-6 mt-6">
                             <h4 className="text-gray-900 mb-4 flex items-center gap-2"><Package className="w-5 h-5 text-blue-600" /> 재고 관리</h4>

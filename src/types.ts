@@ -1,5 +1,10 @@
 // src/types.ts
 
+export interface TokenRefreshResponse {
+    accessToken: string;
+    refreshToken: string;
+}
+
 export interface Review {
     id: string;
     userId: string;

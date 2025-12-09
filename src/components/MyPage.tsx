@@ -1,33 +1,58 @@
-import React, { useState } from 'react';
-import { User, Book, Order } from '../types'; // types.ts에서 타입 가져오기
-import { X, BookOpen, ShoppingBag, Calendar, CheckCircle, Edit2, Trash2, Key, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, Book, Order } from '../types'; // types.ts 확인
+import { apiFetch } from '../api/client'; // ⭐ apiFetch 임포트
+import { X, BookOpen, ShoppingBag, Calendar, CheckCircle, Edit2, Trash2, Key, AlertCircle, LogOut } from 'lucide-react';
 
 interface MyPageProps {
     user: User;
-    books: Book[];      // 내가 등록한 책 (관리자용)
-    allBooks: Book[];   // 전체 책 (구매 내역에서 책 정보 찾기용)
-    orders: Order[];    // ⭐ 구매 내역 데이터
+    allBooks: Book[];   // 전체 책 목록 (주문 내역 매칭용)
     onClose: () => void;
     onPasswordChange: (newPassword: string) => void;
     onEditBook: (book: Book) => void;
     onDeleteBook: (id: string) => void;
+    onLogout: () => void; // 로그아웃 핸들러 추가
 }
 
-export function MyPage({ user, books, allBooks, orders, onClose, onPasswordChange, onEditBook, onDeleteBook }: MyPageProps) {
-    // 탭 상태 관리 ('info': 내 정보, 'orders': 구매 내역, 'admin': 등록 도서)
+export function MyPage({ user, allBooks, onClose, onPasswordChange, onEditBook, onDeleteBook, onLogout }: MyPageProps) {
     const [activeTab, setActiveTab] = useState<'info' | 'orders' | 'admin'>('info');
 
-    // 비밀번호 변경 관련 State
+    // ⭐ [추가] API로 불러온 데이터를 저장할 State
+    const [myBooks, setMyBooks] = useState<Book[]>([]);
+    const [myOrders, setMyOrders] = useState<Order[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+
+    // 비밀번호 변경 State (기존 유지)
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [passwordError, setPasswordError] = useState('');
     const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-    // ⭐ [핵심 로직] 내 주문 내역만 필터링하고, 최신순으로 정렬
-    const myOrders = orders
-        .filter(o => o.userId === user.id)
-        .sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime());
+    // ⭐ [핵심] 컴포넌트 마운트 시 API 호출
+    useEffect(() => {
+        const fetchUserData = async () => {
+            setIsLoading(true);
+            try {
+                // 1. 본인 주문 목록 조회 (GET /user/order/{userId})
+                const ordersData = await apiFetch<Order[]>(`/user/order/${user.id}`);
+                // 최신순 정렬
+                const sortedOrders = ordersData.sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime());
+                setMyOrders(sortedOrders);
+
+                // 2. 본인 등록 도서 조회 (GET /user/book/{userId})
+                const booksData = await apiFetch<Book[]>(`/user/book/${user.id}`);
+                setMyBooks(booksData);
+
+            } catch (error) {
+                console.error("데이터 로딩 실패:", error);
+                // 에러 시 빈 배열 유지
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchUserData();
+    }, [user.id]);
 
     // 날짜 포맷 함수
     const formatDate = (date: Date | string) => {
@@ -96,136 +121,154 @@ export function MyPage({ user, books, allBooks, orders, onClose, onPasswordChang
                             icon={<ShoppingBag className="w-4 h-4"/>}
                             label="구매 내역"
                         />
-                        {user.role === 'admin' && (
+                        {/* 관리자이거나 등록한 책이 있을 때만 표시 */}
+                        {(user.role === 'admin' || myBooks.length > 0) && (
                             <MenuButton
                                 active={activeTab === 'admin'}
                                 onClick={() => setActiveTab('admin')}
                                 icon={<BookOpen className="w-4 h-4"/>}
-                                label="도서 관리"
+                                label="등록 도서 관리"
                             />
                         )}
                     </div>
 
                     {/* Content Area */}
                     <div className="flex-1 p-8 overflow-y-auto bg-white">
-                        {/* 1. 내 정보 탭 */}
-                        {activeTab === 'info' && (
-                            <div className="max-w-md">
-                                <h3 className="text-lg font-bold mb-6 border-b pb-2">비밀번호 변경</h3>
-                                <form onSubmit={handlePasswordSubmit} className="space-y-4">
-                                    <InputGroup label="현재 비밀번호" type="password" value={currentPassword} onChange={setCurrentPassword} />
-                                    <InputGroup label="새 비밀번호" type="password" value={newPassword} onChange={setNewPassword} />
-                                    <InputGroup label="새 비밀번호 확인" type="password" value={confirmPassword} onChange={setConfirmPassword} />
-
-                                    {passwordError && (
-                                        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
-                                            <AlertCircle className="w-4 h-4" /> {passwordError}
-                                        </div>
-                                    )}
-                                    {passwordSuccess && (
-                                        <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-3 rounded-lg">
-                                            <CheckCircle className="w-4 h-4" /> 비밀번호가 변경되었습니다.
-                                        </div>
-                                    )}
-                                    <button type="submit" className="w-full py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors">
-                                        변경하기
-                                    </button>
-                                </form>
+                        {isLoading ? (
+                            <div className="flex h-full items-center justify-center text-gray-500">
+                                데이터를 불러오는 중입니다...
                             </div>
-                        )}
+                        ) : (
+                            <>
+                                {/* 1. 내 정보 탭 */}
+                                {activeTab === 'info' && (
+                                    <div className="max-w-md">
+                                        <h3 className="text-lg font-bold mb-6 border-b pb-2">비밀번호 변경</h3>
+                                        <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                                            <InputGroup label="현재 비밀번호" type="password" value={currentPassword} onChange={setCurrentPassword} />
+                                            <InputGroup label="새 비밀번호" type="password" value={newPassword} onChange={setNewPassword} />
+                                            <InputGroup label="새 비밀번호 확인" type="password" value={confirmPassword} onChange={setConfirmPassword} />
 
-                        {/* 2. ⭐ 구매 내역 탭 (여기가 핵심!) */}
-                        {activeTab === 'orders' && (
-                            <div>
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-lg font-bold flex items-center gap-2">
-                                        <ShoppingBag className="w-5 h-5 text-indigo-600"/>
-                                        구매 내역 <span className="text-gray-400 text-sm font-normal">({myOrders.length}건)</span>
-                                    </h3>
-                                </div>
-
-                                {myOrders.length === 0 ? (
-                                    <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                                        <ShoppingBag className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                                        <p className="text-gray-500">아직 구매한 도서가 없습니다.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-4">
-                                        {myOrders.map(order => {
-                                            // 주문 정보에 있는 bookId로 전체 책 목록에서 책 정보를 찾아옴
-                                            const bookInfo = allBooks.find(b => b.id === order.bookId);
-
-                                            return (
-                                                <div key={order.id} className="flex gap-5 p-5 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-shadow">
-                                                    {/* 책 이미지 */}
-                                                    <div className="w-20 h-28 flex-shrink-0 bg-gray-100 rounded-md overflow-hidden border">
-                                                        <img
-                                                            src={bookInfo ? bookInfo.coverImage : 'https://via.placeholder.com/150?text=Deleted'}
-                                                            alt="cover"
-                                                            className="w-full h-full object-cover"
-                                                        />
-                                                    </div>
-
-                                                    {/* 주문 정보 */}
-                                                    <div className="flex-1 flex flex-col justify-between">
-                                                        <div>
-                                                            <div className="flex justify-between items-start">
-                                                                <h4 className="text-lg font-bold text-gray-900 line-clamp-1">
-                                                                    {bookInfo ? bookInfo.title : '(삭제된 도서입니다)'}
-                                                                </h4>
-                                                                <span className="px-3 py-1 bg-green-50 text-green-700 text-xs font-bold rounded-full border border-green-200 flex items-center gap-1">
-                                                                    <CheckCircle className="w-3 h-3" /> 구매확정
-                                                                </span>
-                                                            </div>
-                                                            <p className="text-sm text-gray-500 mt-1">{bookInfo?.author}</p>
-                                                        </div>
-
-                                                        <div className="flex items-end justify-between mt-3">
-                                                            <div className="text-sm text-gray-500 flex flex-col gap-1">
-                                                                <span className="flex items-center gap-1.5">
-                                                                    <Calendar className="w-3.5 h-3.5" />
-                                                                    {formatDate(order.purchaseDate)}
-                                                                </span>
-                                                                <span>주문번호: {order.id.slice(0, 8)}...</span>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <span className="text-sm text-gray-500 mr-2">{order.quantity}권</span>
-                                                                <span className="text-xl font-bold text-indigo-600">
-                                                                    {order.totalPrice.toLocaleString()}원
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                            {passwordError && (
+                                                <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+                                                    <AlertCircle className="w-4 h-4" /> {passwordError}
                                                 </div>
-                                            );
-                                        })}
+                                            )}
+                                            {passwordSuccess && (
+                                                <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-3 rounded-lg">
+                                                    <CheckCircle className="w-4 h-4" /> 변경 완료!
+                                                </div>
+                                            )}
+                                            <button type="submit" className="w-full py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors">
+                                                변경하기
+                                            </button>
+                                        </form>
+
+                                        <div className="mt-8 pt-6 border-t">
+                                            <button onClick={onLogout} className="flex items-center gap-2 text-red-600 hover:text-red-700 font-medium">
+                                                <LogOut className="w-4 h-4" /> 로그아웃
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
-                            </div>
-                        )}
 
-                        {/* 3. 관리자용: 도서 관리 탭 */}
-                        {activeTab === 'admin' && user.role === 'admin' && (
-                            <div>
-                                <h3 className="text-lg font-bold mb-6">등록 도서 관리</h3>
-                                <div className="grid gap-3">
-                                    {books.map(book => (
-                                        <div key={book.id} className="flex items-center justify-between p-4 border rounded-lg bg-white">
-                                            <div className="flex items-center gap-3">
-                                                <img src={book.coverImage} className="w-10 h-14 object-cover rounded bg-gray-100" />
-                                                <div>
-                                                    <div className="font-bold">{book.title}</div>
-                                                    <div className="text-xs text-gray-500">재고: {book.stock}권</div>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => onEditBook(book)} className="p-2 text-gray-500 hover:bg-gray-100 rounded"><Edit2 className="w-4 h-4"/></button>
-                                                <button onClick={() => { if(confirm('삭제?')) onDeleteBook(book.id) }} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4"/></button>
-                                            </div>
+                                {/* 2. 구매 내역 탭 */}
+                                {activeTab === 'orders' && (
+                                    <div>
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h3 className="text-lg font-bold flex items-center gap-2">
+                                                <ShoppingBag className="w-5 h-5 text-indigo-600"/>
+                                                구매 내역 <span className="text-gray-400 text-sm font-normal">({myOrders.length}건)</span>
+                                            </h3>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
+
+                                        {myOrders.length === 0 ? (
+                                            <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                                <ShoppingBag className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                                                <p className="text-gray-500">아직 구매한 도서가 없습니다.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {myOrders.map(order => {
+                                                    // 전체 책 목록(allBooks)에서 책 정보 찾기
+                                                    const bookInfo = allBooks.find(b => b.id === order.bookId);
+
+                                                    return (
+                                                        <div key={order.id} className="flex gap-5 p-5 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-shadow">
+                                                            <div className="w-20 h-28 flex-shrink-0 bg-gray-100 rounded-md overflow-hidden border">
+                                                                <img
+                                                                    src={bookInfo ? bookInfo.coverImage : 'https://via.placeholder.com/150?text=No+Img'}
+                                                                    alt="cover"
+                                                                    className="w-full h-full object-cover"
+                                                                />
+                                                            </div>
+                                                            <div className="flex-1 flex flex-col justify-between">
+                                                                <div>
+                                                                    <div className="flex justify-between items-start">
+                                                                        <h4 className="text-lg font-bold text-gray-900 line-clamp-1">
+                                                                            {bookInfo ? bookInfo.title : '(삭제된 도서)'}
+                                                                        </h4>
+                                                                        <span className="px-3 py-1 bg-green-50 text-green-700 text-xs font-bold rounded-full border border-green-200 flex items-center gap-1">
+                                                                            <CheckCircle className="w-3 h-3" /> 결제완료
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-sm text-gray-500 mt-1">{bookInfo?.author}</p>
+                                                                </div>
+                                                                <div className="flex items-end justify-between mt-3">
+                                                                    <div className="text-sm text-gray-500 flex flex-col gap-1">
+                                                                        <span className="flex items-center gap-1.5">
+                                                                            <Calendar className="w-3.5 h-3.5" />
+                                                                            {formatDate(order.purchaseDate)}
+                                                                        </span>
+                                                                        <span className="text-xs text-gray-400">주문번호: {order.id.slice(0, 8)}</span>
+                                                                    </div>
+                                                                    <div className="text-right">
+                                                                        <span className="text-sm text-gray-500 mr-2">{order.quantity}권</span>
+                                                                        <span className="text-xl font-bold text-indigo-600">
+                                                                            {order.totalPrice.toLocaleString()}원
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* 3. 등록 도서 관리 탭 (본인이 등록한 책) */}
+                                {activeTab === 'admin' && (
+                                    <div>
+                                        <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                                            <BookOpen className="w-5 h-5 text-indigo-600"/>
+                                            등록한 도서 <span className="text-gray-400 text-sm font-normal">({myBooks.length}권)</span>
+                                        </h3>
+                                        {myBooks.length === 0 ? (
+                                            <p className="text-gray-500">등록한 도서가 없습니다.</p>
+                                        ) : (
+                                            <div className="grid gap-3">
+                                                {myBooks.map(book => (
+                                                    <div key={book.id} className="flex items-center justify-between p-4 border rounded-lg bg-white hover:bg-gray-50 transition-colors">
+                                                        <div className="flex items-center gap-3">
+                                                            <img src={book.coverImage} className="w-10 h-14 object-cover rounded bg-gray-100" alt="cover" />
+                                                            <div>
+                                                                <div className="font-bold">{book.title}</div>
+                                                                <div className="text-xs text-gray-500">재고: {book.stock}권</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => onEditBook(book)} className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"><Edit2 className="w-4 h-4"/></button>
+                                                            <button onClick={() => { if(confirm('정말 삭제하시겠습니까?')) onDeleteBook(book.id) }} className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 className="w-4 h-4"/></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
@@ -234,8 +277,7 @@ export function MyPage({ user, books, allBooks, orders, onClose, onPasswordChang
     );
 }
 
-// --- 하위 컴포넌트 (깔끔한 코드를 위해 분리) ---
-
+// 하위 컴포넌트들
 function MenuButton({ active, onClick, icon, label }: any) {
     return (
         <button
@@ -266,7 +308,6 @@ function InputGroup({ label, type, value, onChange }: any) {
 }
 
 function UserIconWrapper({ role }: { role: string }) {
-    // 그냥 아이콘 감싸개용
     return <div className={`text-${role === 'admin' ? 'purple' : 'indigo'}-600 font-bold`}>
         {role === 'admin' ? 'A' : 'U'}
     </div>;
