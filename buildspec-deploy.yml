@@ -1,0 +1,24 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      # kubectl 설치
+      - curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+      - chmod +x kubectl
+      - mv kubectl /usr/local/bin/kubectl
+      - kubectl version --client
+
+      # imageDetail.json에서 이미지 URI 읽기
+      - IMAGE_URI=$(python -c "import json; print(json.load(open('imageDetail.json'))['imageUri'])")
+      - echo "IMAGE_URI=$IMAGE_URI"
+
+      # kubeconfig 생성
+      - aws eks update-kubeconfig --region us-east-1 --name a081033-cluster2
+
+  build:
+    commands:
+      # deployment.yaml에 이미지 주입 후 apply
+      - sed -i "s|REPLACE_ME_ECR_URI:latest|$IMAGE_URI|g" k8s/deployment.yaml
+      - kubectl apply -f k8s/
+      - kubectl rollout status deployment/web
