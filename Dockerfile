@@ -19,7 +19,7 @@ FROM public.ecr.aws/nginx/nginx:1.27-alpine
 
 # 수정 포인트: /app/list/dist 에서 가져와야 합니다.
 # (만약 vite.config.ts에서 build.outDir를 수정했다면 그에 맞는 이름을 쓰세요)
-COPY --from=build /app/list/dist /usr/share/nginx/html
+COPY --from=build /app/list/build /usr/share/nginx/html
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
